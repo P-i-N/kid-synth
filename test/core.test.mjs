@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.match(/<script id="core">([\s\S]*?)<\/script>/)[1];
-const { route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift } =
-  new Function(src + '; return {route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift}')();
+const { route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel } =
+  new Function(src + '; return {route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel}')();
 
 test('key down and up', () => {
   assert.deepEqual(route([0x90, 60, 100]), { type: 'key', note: 60, on: true, vel: 100 });
@@ -151,4 +151,46 @@ test('with the octave taken out, every note lands on the 25 keys', () => {
     const key = note - 12 * octaveShift(0, note);
     assert.ok(key >= 48 && key <= 72, `note ${note} → ${key}`);
   }
+});
+
+// ---- a keyboard whose pads have their own channel (the "toddler program", or a factory preset that does) ----
+
+test('any note on the pad channel is a pad', () => {
+  assert.deepEqual(route([0x99, 23, 90]), { type: 'pad', index: 0 });
+  assert.deepEqual(route([0x99, 38, 90]), { type: 'pad', index: 7 });
+  assert.deepEqual(route([0x99, 60, 90]), { type: 'pad', index: 5 });
+  assert.deepEqual(route([0x99, 2, 90]), { type: 'pad', index: 3 });
+  assert.equal(route([0x89, 23, 0]), null);
+  assert.equal(route([0x99, 23, 0]), null);
+});
+
+test('once pads are known to have their own channel, low keys are keys', () => {
+  assert.deepEqual(route([0x90, 30, 90]), { type: 'pad', index: 7 });               // factory layout: a pad
+  assert.deepEqual(route([0x90, 30, 90], true), { type: 'key', note: 30, on: true, vel: 90 });
+  assert.deepEqual(route([0x80, 30, 0], true), { type: 'key', note: 30, on: false, vel: 0 });
+  assert.deepEqual(route([0x99, 30, 90], true), { type: 'pad', index: 7 });
+});
+
+test('the pad channel gives itself away', () => {
+  assert.equal(fromPadChannel([0x99, 23, 90]), true);
+  assert.equal(fromPadChannel([0x89, 23, 0]), true);
+  assert.equal(fromPadChannel([0xC9, 24]), true);
+  assert.equal(fromPadChannel([0x90, 23, 90]), false);
+  assert.equal(fromPadChannel([0xB0, 1, 5]), false);
+  assert.equal(fromPadChannel([]), false);
+});
+
+test('toddler-program pads in controller mode play animals on press only', () => {
+  assert.deepEqual(route([0xB9, 24, 127]), { type: 'pad', index: 0 });
+  assert.deepEqual(route([0xB9, 31, 127]), { type: 'pad', index: 7 });
+  assert.deepEqual(route([0xB9, 32, 127]), { type: 'pad', index: 0 });   // bank B
+  assert.deepEqual(route([0xB0, 39, 1]), { type: 'pad', index: 7 });
+  assert.equal(route([0xB9, 24, 0]), null);
+  assert.equal(route([0xB0, 23, 127]), null);
+  assert.equal(route([0xB0, 40, 127]), null);
+});
+
+test('toddler-program pads in program-change mode play animals', () => {
+  assert.deepEqual(route([0xC9, 24]), { type: 'pad', index: 0 });
+  assert.deepEqual(route([0xC9, 39]), { type: 'pad', index: 7 });
 });

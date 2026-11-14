@@ -38,25 +38,49 @@ key that is leaned on (or a key-up that gets lost) never drones.
 
 ## Keyboard setup it expects
 
-The MPK mini mk2's factory layout: pads send notes 23–38, knobs send
-controllers 1–8, joystick left/right sends pitch bend.
+An MPK mini mk2 in either of two layouts:
 
-## The keyboard's other buttons
+- **Factory layout:** pads send notes 23–38 on the keys' channel, knobs send
+  controllers 1–8, joystick left/right sends pitch bend.
+- **Toddler program** (below): the same, but with the pads on channel 10.
 
-A toddler presses everything. What each button does to the toy:
+The app tells them apart by itself: the first pad hit on channel 10 settles it
+until the page is reloaded.
 
-| button | effect |
-|--------|--------|
-| OCT − / OCT + | None on the keys: the same key plays and lights the same note in any octave. One exception: notes 23–38 are the pads' notes, so with the octave shifted down the lowest keys play animals. |
-| BANK A/B | None: both banks play the same animals. |
-| FULL LEVEL | None: hit strength barely changes loudness anyway. |
-| PROG CHANGE | None: pads still play animals. |
-| CC | Bank B pads still play animals. Bank A pads send the knobs' own controller numbers, so they play knob sounds. |
-| NOTE REPEAT, ARP ON/OFF, TAP TEMPO | The keyboard repeats notes by itself while a pad or key is held. Press ARP ON/OFF to stop an arpeggio. |
-| PROG SELECT + pad | Loads another of the keyboard's four stored programs, which may use other pad notes. Switch back the same way. |
+## Toddler program for the keyboard
 
-The buttons' lights belong to the keyboard and cannot be switched off from here.
+A toddler presses every button. `tools/mpk-program.py` writes one program into
+all four of the keyboard's stored programs, so most buttons stop mattering
+(Linux, needs `alsa-utils`; works while the browser has the keyboard open):
 
+```bash
+python3 tools/mpk-program.py write
+```
+
+It first saves the keyboard's own four programs to `keyboard-backup/` (kept out
+of git, never overwritten), then writes and reads back each one. To undo:
+
+```bash
+python3 tools/mpk-program.py restore
+```
+
+`python3 tools/mpk-program.py show` prints what the keyboard holds.
+
+What each button then does to the toy, and what it does without the program:
+
+| button | with the toddler program | with the factory layout |
+|--------|--------------------------|-------------------------|
+| OCT − / OCT + | Nothing: the same key plays and lights the same note in any octave. | The same, except that shifted down, the lowest keys play animals (they send the pads' notes). |
+| BANK A/B | Nothing: both banks play the same animals. | The same. |
+| FULL LEVEL | Nothing: hit strength barely changes loudness anyway. | The same. |
+| PROG CHANGE | Nothing: pads still play animals. | The same. |
+| CC | Nothing: pads still play animals. | Bank A pads play knob sounds instead. |
+| PROG SELECT + pad | Nothing: all four programs are the same. It also resets the octave and switches the arpeggiator off. | Loads another program; two of the factory ones start a latched arpeggio. |
+| ARP ON/OFF, NOTE REPEAT | Repeats a held key or pad once every two seconds. | Repeats several times a second. |
+| TAP TEMPO | Its light blinks once every two seconds; four taps can speed the above up again. | Blinks about twice a second. |
+
+No program can switch a button or its light off: the keyboard has no setting
+for that.
 
 ## Change an animal
 
@@ -71,6 +95,10 @@ To change which animal a pad shows, edit `ANIMALS` at the top of `index.html`.
 
 ```bash
 node --test test/
+```
+
+```bash
+python3 -m unittest discover -s test
 ```
 
 ## Credits

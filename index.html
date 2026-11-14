@@ -137,22 +137,35 @@ const ANIMALS = [
 
 // The MPK mini's pads: bank A sends notes 23–30, bank B 31–38.
 const PAD_FIRST = 23, PAD_LAST = 38;
+// Channel 10 is where pads live when they have a channel to themselves, as with
+// the "toddler program" (tools/mpk-program.py) and some factory presets.
+const PAD_CHANNEL = 9;
+
+// Has this message come from pads on their own channel?
+function fromPadChannel(bytes) {
+  if (!bytes || !bytes.length || (bytes[0] & 0x0F) !== PAD_CHANNEL) return false;
+  const kind = bytes[0] & 0xF0;
+  return kind === 0x80 || kind === 0x90 || kind === 0xC0;
+}
 
 // MIDI bytes → what the child did, or null for anything we don't play.
-function route(bytes) {
+// padsApart: pads are known to have their own channel, so notes 23–38 elsewhere are keys.
+function route(bytes, padsApart = false) {
   if (!bytes || bytes.length < 2) return null;
-  const kind = bytes[0] & 0xF0, a = bytes[1] & 0x7F;
+  const kind = bytes[0] & 0xF0, channel = bytes[0] & 0x0F, a = bytes[1] & 0x7F;
   if (kind === 0xC0) return { type: 'pad', index: a % 8 };
   if (bytes.length < 3) return null;
   const b = bytes[2] & 0x7F;
   if (kind === 0x90 || kind === 0x80) {
     const on = kind === 0x90 && b > 0;
-    if (a >= PAD_FIRST && a <= PAD_LAST) return on ? { type: 'pad', index: (a - PAD_FIRST) % 8 } : null;
+    const pad = channel === PAD_CHANNEL || (!padsApart && a >= PAD_FIRST && a <= PAD_LAST);
+    if (pad) return on ? { type: 'pad', index: ((a - PAD_FIRST) % 8 + 8) % 8 } : null;
     return { type: 'key', note: a, on, vel: on ? b : 0 };
   }
   if (kind === 0xB0) {
     if (a >= 1 && a <= 8) return { type: 'knob', index: a - 1, value: b };
-    if (a >= 9 && a <= 16) return b > 0 ? { type: 'pad', index: a - 9 } : null;
+    if (a >= 9 && a <= 16) return b > 0 ? { type: 'pad', index: a - 9 } : null;     // factory pads, bank B
+    if (a >= 24 && a <= 39) return b > 0 ? { type: 'pad', index: a % 8 } : null;    // toddler-program pads
     return null;
   }
   if (kind === 0xE0) {
@@ -261,7 +274,7 @@ window.kid = (() => {
   const knobTime = Array(9).fill(-1);
   const keyOfNote = new Map();   // note as the keyboard sent it → the key it was played as
   let ctx = null, sum = null, master = null, buffers = [];
-  let starting = null, ready = false, octave = 0, volume = 1;
+  let starting = null, ready = false, octave = 0, padsApart = false, volume = 1;
 
   const hz = note => 440 * 2 ** ((note - 69) / 12);
   const emit = a => { for (const fn of listeners) fn(a); };
@@ -451,7 +464,10 @@ window.kid = (() => {
 
   function handle(bytes) {
     if (!ready) return;
-    const a = route(bytes);
+    // The first message from pads on their own channel settles it for this session:
+    // from then on, low notes on the keys' channel are keys, not animals.
+    if (!padsApart && fromPadChannel(bytes)) padsApart = true;
+    const a = route(bytes, padsApart);
     if (!a) return;
     if (a.type === 'key') {
       // Take the octave buttons out: the same key always plays and lights the same note.

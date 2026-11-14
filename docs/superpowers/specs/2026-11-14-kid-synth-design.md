@@ -83,6 +83,7 @@ Laid out like the keyboard itself, so a hand and its picture line up.
 
 - Web MIDI, any connected device, reconnects if the cable is pulled.
 - Notes 23–38 are always animals. If the octave buttons shift the keys down, the lowest keys play animals too. Accepted.
+- Pads may instead have MIDI channel 10 to themselves (the "toddler program" written by `tools/mpk-program.py`, added 2026-11-14). The first pad message on channel 10 settles it for the session; from then on notes 23–38 on the keys' channel are keys.
 - The octave buttons are otherwise taken out: the app keeps a guess of the shift and plays and lights every key as one of the 25. (Added 2026-11-14.)
 - Pads also work in their controller and program-change modes where the device allows it.
 - Mouse and touch work on the on-screen keys, pads and knobs, for trying it without the keyboard.
