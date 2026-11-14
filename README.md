@@ -13,7 +13,11 @@ Nothing on screen moves unless the child does something.
 
 ## Run it
 
-Browsers only give MIDI access to a served page, not to a file opened from disk:
+Open <https://p-i-n.github.io/kid-synth/>, click the play button once, and allow
+MIDI when the browser asks.
+
+Or serve it yourself. Browsers only give MIDI access to a served page, not to a
+file opened from disk:
 
 ```bash
 python3 -m http.server 8377
