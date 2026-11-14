@@ -15,7 +15,7 @@ import array, math, pathlib, subprocess, sys, tempfile, urllib.request
 SOURCES = [
     ('cow',     'https://bigsoundbank.com/UPLOAD/ogg/2384.ogg', 0.82, 2.80),
     ('sheep',   'https://upload.wikimedia.org/wikipedia/commons/1/13/Sheep_bleating.ogg', 5.61, 7.35),
-    ('cat',     'https://upload.wikimedia.org/wikipedia/commons/c/c0/Maullido_de_gata_hembra_joven.ogg', 0.00, 1.17),
+    ('cat',     'https://bigsoundbank.com/UPLOAD/ogg/1472.ogg', 0.12, 0.97),
     ('dog',     'https://bigsoundbank.com/UPLOAD/ogg/2954.ogg', 2.43, 3.30),
     ('duck',    'https://bigsoundbank.com/UPLOAD/ogg/0276.ogg', 17.98, 20.40),
     ('rooster', 'https://upload.wikimedia.org/wikipedia/commons/0/0d/Medium_rooster_crowing.ogg', 2.85, 5.35),

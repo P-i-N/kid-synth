@@ -6,7 +6,7 @@ no install, no network.
 - **Keys** play a soft electric piano. Each press lights its key and sends up one slow bloom of colour.
 - **Pads** play eight animals: cow, sheep, cat, dog on the bottom row, duck, rooster, horse, frog on the top row. Both pad banks play the same animals.
 - **Knobs** are eight small melodic toys (music box, marimba, water drop, bell and so on). They play while turned and are silent when still.
-- **Joystick** left and right bends held notes a little.
+- **Joystick** left and right plays a harp, like a ninth knob that springs back. Up and down plays knob 1.
 
 Hard hits are barely louder than soft ones, and the output has a fixed ceiling.
 Nothing on screen moves unless the child does something.
@@ -39,11 +39,24 @@ key that is leaned on (or a key-up that gets lost) never drones.
 ## Keyboard setup it expects
 
 The MPK mini mk2's factory layout: pads send notes 23–38, knobs send
-controllers 1–8. Notes 23–38 always play animals, so if the octave buttons
-shift the keys down two octaves, the lowest keys play animals too.
+controllers 1–8, joystick left/right sends pitch bend.
 
-The keyboard's own ARP, LATCH and NOTE REPEAT buttons make it send notes by
-itself. If it keeps playing with nobody touching it, press ARP ON/OFF.
+## The keyboard's other buttons
+
+A toddler presses everything. What each button does to the toy:
+
+| button | effect |
+|--------|--------|
+| OCT − / OCT + | None on the keys: the same key plays and lights the same note in any octave. One exception: notes 23–38 are the pads' notes, so with the octave shifted down the lowest keys play animals. |
+| BANK A/B | None: both banks play the same animals. |
+| FULL LEVEL | None: hit strength barely changes loudness anyway. |
+| PROG CHANGE | None: pads still play animals. |
+| CC | Bank B pads still play animals. Bank A pads send the knobs' own controller numbers, so they play knob sounds. |
+| NOTE REPEAT, ARP ON/OFF, TAP TEMPO | The keyboard repeats notes by itself while a pad or key is held. Press ARP ON/OFF to stop an arpeggio. |
+| PROG SELECT + pad | Loads another of the keyboard's four stored programs, which may use other pad notes. Switch back the same way. |
+
+The buttons' lights belong to the keyboard and cannot be switched off from here.
+
 
 ## Change an animal
 

@@ -76,13 +76,14 @@ Laid out like the keyboard itself, so a hand and its picture line up.
 - **Keys:** a synthesized soft electric-piano voice, at most eight notes at once. Hit strength changes loudness only a little.
 - **Pads:** eight animals, the same on both pad banks. Planned set: cow, sheep, cat, dog, duck, rooster, horse, frog. Hitting a pad again restarts its clip; at most two animals sound together. Clips are trimmed to about two seconds and levelled.
 - **Knobs:** each knob is a small melodic toy. Turning it steps through a five-note scale, so anything it plays sounds fine with the keys. Each knob has its own gentle voice (music box, marimba, water drop, kalimba, soft bell and similar). Silent when still.
-- **Joystick:** left/right bends held notes slightly. Up/down acts as knob 1.
+- **Joystick:** left/right is a ninth melodic toy (a harp) that springs back to its middle. Up/down acts as knob 1. (Changed 2026-11-14: it first bent held notes, which was inaudible unless a key was down.)
 - A limiter and a fixed ceiling on the master output. A small volume control for the parent sits in a corner.
 
 ### Input
 
 - Web MIDI, any connected device, reconnects if the cable is pulled.
-- Notes 23–38 are always animals. If the octave buttons shift the keys down two octaves, the lowest keys play animals too. Accepted.
+- Notes 23–38 are always animals. If the octave buttons shift the keys down, the lowest keys play animals too. Accepted.
+- The octave buttons are otherwise taken out: the app keeps a guess of the shift and plays and lights every key as one of the 25. (Added 2026-11-14.)
 - Pads also work in their controller and program-change modes where the device allows it.
 - Mouse and touch work on the on-screen keys, pads and knobs, for trying it without the keyboard.
 
