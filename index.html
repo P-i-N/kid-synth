@@ -4,8 +4,105 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>kid-synth</title>
+<style>
+  :root {
+    --bg: #14161f;
+    --tile: rgba(255, 255, 255, 0.045);
+    --tile-live: rgba(255, 255, 255, 0.13);
+    --line: rgba(255, 255, 255, 0.1);
+    --ink: rgba(255, 255, 255, 0.5);
+    --cell: min(8.5vw, 13vh);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); overflow: hidden; }
+  body {
+    display: grid;
+    grid-template-rows: 1fr auto 26vh;
+    font-family: system-ui, sans-serif;
+    color: var(--ink);
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  button { font: inherit; color: inherit; border: 0; padding: 0; background: none; cursor: pointer; }
+
+  /* Blooms are drawn behind everything; the tiles are see-through. */
+  #sky { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  #band {
+    grid-row: 2;
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    padding: 0 6vw 4.5vh;
+  }
+  .grid { display: grid; grid-template-columns: repeat(4, var(--cell)); gap: calc(var(--cell) * 0.16); }
+  .pad, .knob {
+    width: var(--cell);
+    height: var(--cell);
+    background: var(--tile);
+    border: 1px solid var(--line);
+  }
+  .pad { border-radius: 22%; display: grid; place-items: center; font-size: calc(var(--cell) * 0.56); line-height: 1; }
+  .pad span { display: block; pointer-events: none; }
+  .knob { border-radius: 50%; cursor: ns-resize; }
+  .knob svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+  .knob circle { fill: none; stroke-width: 9; stroke-linecap: round; }
+  .knob .track { stroke: var(--line); }
+  .knob .arc { opacity: 0.5; transition: opacity 0.8s ease-out; }
+  .knob.live .arc { opacity: 1; transition: opacity 0.15s ease-in; }
+  #note { position: absolute; left: 6vw; bottom: 1vh; margin: 0; font-size: max(12px, 1.6vh); }
+
+  #keys { grid-row: 3; position: relative; display: flex; margin: 0 3vw; }
+  .key { transition: background-color 0.5s ease-out; cursor: pointer; }
+  .key.white { flex: 1; margin: 0 0.15vw; background: #c9c6be; border-radius: 0 0 0.8vw 0.8vw; }
+  .key.black {
+    position: absolute;
+    top: 0;
+    width: 4%;
+    height: 58%;
+    transform: translateX(-50%);
+    background: #23252f;
+    border-radius: 0 0 0.6vw 0.6vw;
+  }
+  .key.lit { background: var(--c); transition: background-color 0.15s ease-in; }
+
+  /* For the parent: small and out of the way. */
+  #corner { position: fixed; top: 1.5vh; right: 1.5vw; display: flex; align-items: center; gap: 10px; opacity: 0.35; transition: opacity 0.3s; }
+  #corner:hover, #corner:focus-within { opacity: 0.9; }
+  #corner svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  #vol { width: 90px; accent-color: #8a8fa3; }
+
+  #start { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); transition: opacity 0.5s; }
+  #start.gone { opacity: 0; pointer-events: none; }
+  #play { width: 26vmin; height: 26vmin; border-radius: 50%; background: #2a2e40; border: 1px solid var(--line); }
+  #play:hover { background: #343950; }
+  #play svg { width: 44%; height: 44%; margin-left: 5%; fill: #c9c6be; }
+</style>
 </head>
 <body>
+
+<canvas id="sky"></canvas>
+<div id="band">
+  <div id="pads" class="grid"></div>
+  <div id="knobs" class="grid"></div>
+  <p id="note" hidden>No keyboard found. You can still play with the mouse.</p>
+</div>
+<div id="keys"></div>
+
+<div id="corner">
+  <input id="vol" type="range" min="0" max="100" value="100" aria-label="Volume">
+  <button id="full" aria-label="Full screen">
+    <svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+  </button>
+</div>
+
+<div id="start">
+  <button id="play" aria-label="Start">
+    <svg viewBox="0 0 100 100"><path d="M24 12 L88 50 L24 88 Z"/></svg>
+  </button>
+</div>
 
 <script id="core">
 // Pure logic: no DOM, no audio. test/core.test.mjs loads this block as it is.
@@ -59,6 +156,21 @@ const KNOB_SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26];
 function knobNote(index, value) {
   const step = Math.min(11, Math.floor(Math.min(127, Math.max(0, value)) * 12 / 128));
   return (index < 4 ? 60 : 48) + KNOB_SCALE[step];
+}
+
+// The on-screen keyboard: the MPK mini's 25 keys at their default octave.
+const KEY_FIRST = 48, KEY_LAST = 72, WHITE_KEYS = 15;
+function isBlack(note) {
+  return [1, 3, 6, 8, 10].includes(note % 12);
+}
+
+// Where a note sits across the keyboard, 0 (left) to 1 (right).
+// Notes beyond the keyboard sit at its nearest edge.
+function keyX(note) {
+  const n = Math.min(KEY_LAST, Math.max(KEY_FIRST, note));
+  let whitesBelow = 0;
+  for (let k = KEY_FIRST; k < n; k++) if (!isBlack(k)) whitesBelow++;
+  return (isBlack(n) ? whitesBelow : whitesBelow + 0.5) / WHITE_KEYS;
 }
 </script>
 
@@ -315,16 +427,232 @@ window.kid = (() => {
     for (const fn of listeners) fn({ type: 'alloff' });
   }
 
+  // Listen to every keyboard a MIDIAccess offers, now and whenever one is plugged in.
+  // If one goes away, stop its notes: their key-ups will never arrive.
+  function attach(access) {
+    let had = 0;
+    const scan = () => {
+      let inputs = 0;
+      for (const input of access.inputs.values()) {
+        if (input.state === 'disconnected' || /through/i.test(input.name || '')) continue;
+        input.onmidimessage = e => handle(e.data);
+        inputs++;
+      }
+      if (inputs < had) allOff();
+      had = inputs;
+      for (const fn of listeners) fn({ type: 'midi', inputs });
+    };
+    access.onstatechange = scan;
+    scan();
+  }
+
   function setVolume(v) {
     volume = Math.max(0, Math.min(1, v));
     if (master) master.gain.setTargetAtTime(MASTER * volume, ctx.currentTime, 0.03);
   }
 
   return {
-    start, handle, allOff, setVolume, state,
+    start, handle, allOff, setVolume, attach, state,
     on: fn => listeners.push(fn),
     resume: () => ctx && ctx.resume(),
   };
+})();
+</script>
+
+<script id="screen">
+// Pictures and input. Every picture is a response to an action from kid.on().
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const SVG = 'http://www.w3.org/2000/svg';
+
+  // Twelve muted colours of equal lightness, one per note name.
+  const hue = note => (note % 12) * 30 + 20;
+  const oklch = window.CSS && CSS.supports('color', 'oklch(0.7 0.1 20)');
+  const colour = (h, alpha = 1) => oklch ? `oklch(0.76 0.1 ${h} / ${alpha})` : `hsla(${h}, 45%, 66%, ${alpha})`;
+
+  // ---- pads, placed as on the MPK mini: pads 5–8 above pads 1–4 ----
+  const padEls = [];
+  for (const i of [4, 5, 6, 7, 0, 1, 2, 3]) {
+    const el = document.createElement('button');
+    el.className = 'pad';
+    el.setAttribute('aria-label', ANIMALS[i].name);
+    el.innerHTML = `<span>${ANIMALS[i].emoji}</span>`;
+    el.addEventListener('pointerdown', e => { e.preventDefault(); kid.handle([0x90, 23 + i, 100]); });
+    $('pads').append(el);
+    padEls[i] = el;
+  }
+
+  function bounce(el) {
+    const tile = getComputedStyle(document.documentElement);
+    el.animate(
+      [{ backgroundColor: tile.getPropertyValue('--tile') },
+       { backgroundColor: tile.getPropertyValue('--tile-live'), offset: 0.25 },
+       { backgroundColor: tile.getPropertyValue('--tile') }],
+      { duration: 800, easing: 'ease-out' });
+    el.firstChild.animate(
+      [{ transform: 'scale(1)' }, { transform: 'scale(1.25)', offset: 0.25 }, { transform: 'scale(1)' }],
+      { duration: 800, easing: 'ease-out' });
+  }
+
+  // ---- knobs, placed as on the MPK mini: 1–4 above 5–8 ----
+  const R = 36, TURN = 2 * Math.PI * R, SWEEP = 0.75 * TURN;   // the ring covers three quarters of a circle
+  const knobEls = [], knobTimers = [];
+  for (let i = 0; i < 8; i++) {
+    const el = document.createElement('div');
+    el.className = 'knob';
+    el.setAttribute('role', 'slider');
+    el.setAttribute('aria-label', `Knob ${i + 1}`);
+    const ring = cls => `<circle class="${cls}" cx="50" cy="50" r="${R}" transform="rotate(135 50 50)"/>`;
+    el.innerHTML = `<svg viewBox="0 0 100 100">${ring('track')}${ring('arc')}</svg>`;
+    el.querySelector('.track').setAttribute('stroke-dasharray', `${SWEEP} ${TURN}`);
+    el.querySelector('.arc').setAttribute('stroke', colour(i * 45 + 20));
+    let drag = null;
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      drag = { y: e.clientY, value: kid.state.knobs[i], sent: kid.state.knobs[i] };
+    });
+    el.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const value = Math.round(Math.min(127, Math.max(0, drag.value + (drag.y - e.clientY) * 0.7)));
+      if (value !== drag.sent) { drag.sent = value; kid.handle([0xB0, i + 1, value]); }
+    });
+    for (const type of ['pointerup', 'pointercancel']) el.addEventListener(type, () => { drag = null; });
+    $('knobs').append(el);
+    knobEls[i] = el;
+    showKnob(i, 0, false);
+  }
+
+  function showKnob(i, value, live) {
+    const el = knobEls[i];
+    el.querySelector('.arc').setAttribute('stroke-dasharray', `${SWEEP * value / 127} ${TURN}`);
+    el.setAttribute('aria-valuenow', value);
+    if (!live) return;
+    el.classList.add('live');
+    clearTimeout(knobTimers[i]);
+    knobTimers[i] = setTimeout(() => el.classList.remove('live'), 250);
+  }
+
+  // ---- keys ----
+  const keyEls = new Map();
+  for (const black of [false, true]) {
+    for (let note = KEY_FIRST; note <= KEY_LAST; note++) {
+      if (isBlack(note) !== black) continue;
+      const el = document.createElement('div');
+      el.className = black ? 'key black' : 'key white';
+      el.style.setProperty('--c', colour(hue(note)));
+      if (black) el.style.left = `${keyX(note) * 100}%`;
+      el.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        el.setPointerCapture(e.pointerId);
+        kid.handle([0x90, note, 90]);
+      });
+      for (const type of ['pointerup', 'pointercancel']) el.addEventListener(type, () => kid.handle([0x80, note, 0]));
+      $('keys').append(el);
+      keyEls.set(note, el);
+    }
+  }
+
+  // ---- blooms: one soft circle per key press, rising and fading ----
+  const BLOOM_IN = 0.15, BLOOM_LIFE = 2.15, BLOOM_MAX = 24;
+  const sky = $('sky'), g = sky.getContext('2d');
+  let blooms = [], frame = 0, W = 0, H = 0, keysBox = null;
+
+  function resize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    sky.width = Math.round(W * dpr);
+    sky.height = Math.round(H * dpr);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    keysBox = $('keys').getBoundingClientRect();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function bloom(note) {
+    if (blooms.length >= BLOOM_MAX) blooms.shift();
+    blooms.push({ x: keysBox.left + keyX(note) * keysBox.width, born: performance.now(), hue: hue(note) });
+    if (!frame) frame = requestAnimationFrame(draw);
+  }
+
+  function draw(now) {
+    g.clearRect(0, 0, W, H);
+    blooms = blooms.filter(b => (now - b.born) / 1000 < BLOOM_LIFE);
+    const size = Math.min(W, H) * 0.1;
+    for (const b of blooms) {
+      const age = (now - b.born) / 1000, life = age / BLOOM_LIFE;
+      const rise = 1 - (1 - life) ** 2;                       // quick at first, then slowing
+      const y = keysBox.top - H * 0.34 * rise;
+      const r = size * (0.4 + 0.6 * Math.min(1, age / 0.3));
+      const alpha = 0.55 * Math.min(1, age / BLOOM_IN) * (1 - life) ** 1.5;
+      const fill = g.createRadialGradient(b.x, y, 0, b.x, y, r);
+      fill.addColorStop(0, colour(b.hue, alpha));
+      fill.addColorStop(1, colour(b.hue, 0));
+      g.fillStyle = fill;
+      g.beginPath();
+      g.arc(b.x, y, r, 0, 2 * Math.PI);
+      g.fill();
+    }
+    frame = blooms.length ? requestAnimationFrame(draw) : 0;   // nothing alive: nothing runs
+  }
+
+  // ---- actions → pictures ----
+  kid.on(a => {
+    if (a.type === 'key') {
+      const el = keyEls.get(a.note);
+      if (el) el.classList.toggle('lit', a.on);
+      if (a.on) bloom(a.note);
+    } else if (a.type === 'pad') {
+      bounce(padEls[a.index]);
+    } else if (a.type === 'knob') {
+      showKnob(a.index, a.value, true);
+    } else if (a.type === 'alloff') {
+      for (const el of keyEls.values()) el.classList.remove('lit');
+    } else if (a.type === 'midi') {
+      $('note').hidden = a.inputs > 0;
+    }
+  });
+
+  // ---- start, and the parent's corner ----
+  async function wake() {
+    try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) { /* not allowed: fine */ }
+  }
+
+  async function connect() {
+    try {
+      kid.attach(await navigator.requestMIDIAccess());
+    } catch (e) {
+      $('note').hidden = false;   // no Web MIDI here, or permission refused
+    }
+  }
+
+  $('play').addEventListener('click', async () => {
+    $('play').disabled = true;
+    try {
+      await kid.start();
+    } catch (e) {
+      $('play').disabled = false;
+      return;
+    }
+    $('start').classList.add('gone');
+    connect();
+    wake();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    kid.resume();
+    wake();
+  });
+  document.addEventListener('pointerdown', () => kid.resume());
+
+  $('vol').addEventListener('input', e => kid.setVolume(e.target.value / 100));
+  $('full').addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  });
 })();
 </script>
 

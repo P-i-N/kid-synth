@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.match(/<script id="core">([\s\S]*?)<\/script>/)[1];
-const { route, velGain, knobNote, ANIMALS } =
-  new Function(src + '; return {route, velGain, knobNote, ANIMALS}')();
+const { route, velGain, knobNote, ANIMALS, isBlack, keyX } =
+  new Function(src + '; return {route, velGain, knobNote, ANIMALS, isBlack, keyX}')();
 
 test('key down and up', () => {
   assert.deepEqual(route([0x90, 60, 100]), { type: 'key', note: 60, on: true, vel: 100 });
@@ -85,4 +85,24 @@ test('eight animals in pad order', () => {
   assert.deepEqual(ANIMALS.map(a => a.name),
     ['cow', 'sheep', 'cat', 'dog', 'duck', 'rooster', 'horse', 'frog']);
   for (const a of ANIMALS) assert.ok(a.emoji);
+});
+
+test('black keys of the 25-key keyboard', () => {
+  const black = [];
+  for (let n = 48; n <= 72; n++) if (isBlack(n)) black.push(n);
+  assert.deepEqual(black, [49, 51, 54, 56, 58, 61, 63, 66, 68, 70]);
+});
+
+test('a key sits at its place across the keyboard', () => {
+  assert.equal(keyX(48), 0.5 / 15);          // first white key
+  assert.equal(keyX(49), 1 / 15);            // black key on the edge of two whites
+  assert.equal(keyX(72), 14.5 / 15);         // last white key
+  for (let n = 49; n <= 72; n++) assert.ok(keyX(n) > keyX(n - 1));
+});
+
+test('notes beyond the keyboard sit at its nearest edge', () => {
+  assert.equal(keyX(0), keyX(48));
+  assert.equal(keyX(47), keyX(48));
+  assert.equal(keyX(73), keyX(72));
+  assert.equal(keyX(127), keyX(72));
 });
