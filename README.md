@@ -26,11 +26,20 @@ top-right corner is the volume; the button next to it is full screen.
 Without a keyboard, the on-screen keys, pads and knobs work with the mouse or a
 finger. Drag a knob up or down to turn it.
 
+If the keyboard is unplugged and plugged back in, it should play again within a
+few seconds. If it does not, reload the page and click play.
+
+A held key fades out by itself after a few seconds, like a piano string, so a
+key that is leaned on (or a key-up that gets lost) never drones.
+
 ## Keyboard setup it expects
 
 The MPK mini mk2's factory layout: pads send notes 23–38, knobs send
 controllers 1–8. Notes 23–38 always play animals, so if the octave buttons
 shift the keys down two octaves, the lowest keys play animals too.
+
+The keyboard's own ARP, LATCH and NOTE REPEAT buttons make it send notes by
+itself. If it keeps playing with nobody touching it, press ARP ON/OFF.
 
 ## Change an animal
 
