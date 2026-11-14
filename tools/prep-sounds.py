@@ -10,16 +10,17 @@ The originals stay in CACHE_DIR, outside the repo. Licences: see CREDITS.md.
 """
 import array, math, pathlib, subprocess, sys, tempfile, urllib.request
 
-# animal, source recording, slice start and end in seconds
+# animal, source recording, slice start and end in seconds.
+# Each slice starts right where the animal does: a pad that is hit must be heard at once.
 SOURCES = [
-    ('cow',     'https://bigsoundbank.com/UPLOAD/ogg/2384.ogg', 0.35, 2.80),
-    ('sheep',   'https://upload.wikimedia.org/wikipedia/commons/1/13/Sheep_bleating.ogg', 5.45, 7.35),
+    ('cow',     'https://bigsoundbank.com/UPLOAD/ogg/2384.ogg', 0.82, 2.80),
+    ('sheep',   'https://upload.wikimedia.org/wikipedia/commons/1/13/Sheep_bleating.ogg', 5.61, 7.35),
     ('cat',     'https://upload.wikimedia.org/wikipedia/commons/c/c0/Maullido_de_gata_hembra_joven.ogg', 0.00, 1.17),
-    ('dog',     'https://bigsoundbank.com/UPLOAD/ogg/2954.ogg', 2.30, 3.30),
-    ('duck',    'https://bigsoundbank.com/UPLOAD/ogg/0276.ogg', 17.60, 19.90),
+    ('dog',     'https://bigsoundbank.com/UPLOAD/ogg/2954.ogg', 2.43, 3.30),
+    ('duck',    'https://bigsoundbank.com/UPLOAD/ogg/0276.ogg', 17.98, 20.40),
     ('rooster', 'https://upload.wikimedia.org/wikipedia/commons/0/0d/Medium_rooster_crowing.ogg', 2.85, 5.35),
-    ('horse',   'https://upload.wikimedia.org/wikipedia/commons/d/db/Wiehern.ogg', 0.00, 2.27),
-    ('frog',    'https://bigsoundbank.com/UPLOAD/ogg/0819.ogg', 2.15, 3.65),
+    ('horse',   'https://upload.wikimedia.org/wikipedia/commons/d/db/Wiehern.ogg', 0.09, 2.27),
+    ('frog',    'https://bigsoundbank.com/UPLOAD/ogg/0819.ogg', 2.32, 3.80),
 ]
 
 RATE = 44100
