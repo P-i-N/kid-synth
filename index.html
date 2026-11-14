@@ -77,5 +77,256 @@ const CLIPS = [
 /*SOUNDS-END*/
 </script>
 
+<script id="engine">
+// Sound. Everything the child does arrives through kid.handle(bytes).
+window.kid = (() => {
+  'use strict';
+
+  const MAX_KEYS = 8;          // key notes sounding at once
+  const MAX_CLIPS = 2;         // animals sounding at once
+  const PAD_REHIT = 0.12;      // seconds a pad ignores a second hit (bouncing fingers)
+  const KNOB_GAP = 0.07;       // seconds between two notes of one knob
+  const KNOB_SLACK = 3;        // a knob must move this far before it plays again
+  const BEND_CENTS = 200;      // joystick fully left or right
+  const MASTER = 0.7;
+  const CEILING = 0.7;         // the output never exceeds this (about -3 dBFS)
+
+  // One short plucked voice per knob. partials: [frequency ratio, level, decay scale].
+  // sweep: [start ratio, end ratio, seconds] bends the pitch, for drops and bubbles.
+  const KNOB_VOICES = [
+    { name: 'music box',  wave: 'sine',     octave: 1, decay: 0.7,  partials: [[1, 1, 1], [4, 0.2, 0.4]] },
+    { name: 'marimba',    wave: 'sine',     octave: 0, decay: 0.35, partials: [[1, 1, 1], [4, 0.3, 0.25]] },
+    { name: 'water drop', wave: 'sine',     octave: 1, decay: 0.16, partials: [[1, 1, 1]], sweep: [0.6, 1.25, 0.08] },
+    { name: 'soft bell',  wave: 'sine',     octave: 0, decay: 0.8,  partials: [[1, 1, 1], [2.76, 0.3, 0.6], [5.4, 0.12, 0.3]] },
+    { name: 'kalimba',    wave: 'triangle', octave: 1, decay: 0.5,  partials: [[1, 1, 1], [3, 0.15, 0.3]] },
+    { name: 'wood block', wave: 'sine',     octave: 1, decay: 0.1,  partials: [[1, 1, 1], [2.5, 0.35, 0.6]] },
+    { name: 'bubble',     wave: 'sine',     octave: 1, decay: 0.2,  partials: [[1, 1, 1]], sweep: [1, 2, 0.12] },
+    { name: 'low bell',   wave: 'sine',     octave: 0, decay: 0.8,  partials: [[1, 1, 1], [2, 0.35, 0.7], [3.01, 0.15, 0.4]] },
+  ];
+
+  const state = { keys: new Set(), clipsPlaying: 0, knobs: Array(8).fill(0), peak: 0 };
+  const listeners = [];
+  const voices = new Map();      // note → voice, oldest first
+  const clips = [];              // animals sounding, oldest first
+  const padTime = Array(8).fill(-1);
+  const knobNoteNow = Array(8).fill(null);
+  const knobValueAtNote = Array(8).fill(null);
+  const knobTime = Array(8).fill(-1);
+  let ctx = null, sum = null, master = null, buffers = [];
+  let starting = null, ready = false, bend = 0, volume = 1;
+
+  const hz = note => 440 * 2 ** ((note - 69) / 12);
+
+  // Octave buttons can send notes from rumble to shriek: keep the sound in a gentle range.
+  function gentle(note) {
+    while (note < 36) note += 12;
+    while (note > 96) note -= 12;
+    return note;
+  }
+
+  function start() {
+    if (!starting) starting = build();
+    return starting;
+  }
+
+  async function build() {
+    ctx = new AudioContext({ latencyHint: 'interactive' });
+    sum = ctx.createGain();
+    master = ctx.createGain();
+    master.gain.value = MASTER * volume;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -14;
+    comp.knee.value = 6;
+    comp.ratio.value = 12;
+    comp.attack.value = 0.003;
+    comp.release.value = 0.15;
+    // A soft clip after the compressor is the hard guarantee on loudness:
+    // whatever goes in, nothing above CEILING comes out.
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(2049);
+    for (let i = 0; i < curve.length; i++) {
+      const x = i / (curve.length - 1) * 2 - 1;
+      curve[i] = CEILING * Math.tanh(x / CEILING);
+    }
+    shaper.curve = curve;
+    sum.connect(master).connect(comp).connect(shaper).connect(ctx.destination);
+
+    // state.peak: the highest output sample so far. Measured on the audio thread,
+    // so it sees every sample even when the tab is in the background.
+    try {
+      const code = `registerProcessor('peak', class extends AudioWorkletProcessor {
+        constructor() { super(); this.peak = 0; this.blocks = 0; }
+        process(inputs) {
+          const samples = inputs[0][0];
+          if (samples) for (const s of samples) if (Math.abs(s) > this.peak) this.peak = Math.abs(s);
+          if (++this.blocks % 16 === 0 && this.peak > 0) { this.port.postMessage(this.peak); this.peak = 0; }
+          return true;
+        }
+      });`;
+      const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+      await ctx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      const meter = new AudioWorkletNode(ctx, 'peak', { numberOfOutputs: 0 });
+      meter.port.onmessage = e => { if (e.data > state.peak) state.peak = e.data; };
+      shaper.connect(meter);
+    } catch (e) { /* no meter: state.peak stays 0, the sound is unaffected */ }
+
+    buffers = await Promise.all(CLIPS.map(uri => {
+      const bin = atob(uri.slice(uri.indexOf(',') + 1));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return ctx.decodeAudioData(bytes.buffer).catch(() => null);
+    }));
+    ctx.resume();
+    ready = true;
+  }
+
+  // ---- keys: a soft electric-piano voice ----
+
+  function keyOn(note, vel) {
+    if (voices.has(note)) keyOff(note, 0.03);
+    if (voices.size >= MAX_KEYS) keyOff(voices.keys().next().value, 0.03);
+    const t = ctx.currentTime, f = hz(gentle(note)), peak = velGain(vel) * 0.2;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, t);
+    env.gain.setTargetAtTime(peak, t, 0.003);            // about 8 ms attack
+    env.gain.setTargetAtTime(peak * 0.35, t + 0.012, 0.4); // settles over about 1.2 s
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 2200;
+    tone.connect(env).connect(sum);
+    const oscs = [['triangle', 1, -4, 0.5], ['triangle', 1, 4, 0.5], ['sine', 2, 0, 0.22]].map(([type, ratio, cents, level]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type;
+      o.frequency.value = f * ratio;
+      o.detune.value = cents + bend * BEND_CENTS;
+      g.gain.value = level;
+      o.connect(g).connect(tone);
+      o.start(t);
+      return { o, cents };
+    });
+    voices.set(note, { env, oscs });
+    state.keys.add(note);
+  }
+
+  function keyOff(note, seconds = 0.25) {
+    const v = voices.get(note);
+    if (!v) return;
+    voices.delete(note);
+    state.keys.delete(note);
+    const t = ctx.currentTime;
+    v.env.gain.cancelScheduledValues(t);
+    v.env.gain.setTargetAtTime(0, t, seconds / 4);
+    for (const { o } of v.oscs) o.stop(t + seconds * 2);
+  }
+
+  function setBend(value) {
+    bend = Math.max(-1, Math.min(1, value));
+    const t = ctx.currentTime;
+    for (const v of voices.values()) {
+      for (const { o, cents } of v.oscs) o.detune.setTargetAtTime(cents + bend * BEND_CENTS, t, 0.01);
+    }
+  }
+
+  // ---- pads: animal recordings ----
+
+  function stopClip(c, seconds) {
+    const i = clips.indexOf(c);
+    if (i < 0) return;
+    clips.splice(i, 1);
+    state.clipsPlaying = clips.length;
+    const t = ctx.currentTime;
+    c.gain.gain.setTargetAtTime(0, t, seconds / 4);
+    c.src.stop(t + seconds * 2);
+  }
+
+  function padHit(index) {
+    const buffer = buffers[index], t = ctx.currentTime;
+    if (!buffer || t - padTime[index] < PAD_REHIT) return false;
+    padTime[index] = t;
+    for (const c of clips.filter(c => c.index === index)) stopClip(c, 0.02);
+    while (clips.length >= MAX_CLIPS) stopClip(clips[0], 0.05);
+    const src = ctx.createBufferSource(), gain = ctx.createGain();
+    src.buffer = buffer;
+    gain.gain.value = 0.8;
+    src.connect(gain).connect(sum);
+    const c = { index, src, gain };
+    src.onended = () => stopClip(c, 0.02);
+    src.start(t);
+    clips.push(c);
+    state.clipsPlaying = clips.length;
+    return true;
+  }
+
+  // ---- knobs: one small melodic toy each ----
+
+  function pluck(voice, note) {
+    const t = ctx.currentTime, f = hz(note + 12 * voice.octave);
+    for (const [ratio, level, decayScale] of voice.partials) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      const decay = voice.decay * decayScale;
+      o.type = voice.wave;
+      if (voice.sweep) {
+        const [from, to, seconds] = voice.sweep;
+        o.frequency.setValueAtTime(f * ratio * from, t);
+        o.frequency.exponentialRampToValueAtTime(f * ratio * to, t + seconds);
+      } else {
+        o.frequency.value = f * ratio;
+      }
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.15 * level, t + 0.004);
+      g.gain.setTargetAtTime(0, t + 0.004, decay / 4);
+      o.connect(g).connect(sum);
+      o.start(t);
+      o.stop(t + decay * 2 + 0.05);
+    }
+  }
+
+  function knobTurn(index, value) {
+    state.knobs[index] = value;
+    const note = knobNote(index, value), t = ctx.currentTime;
+    if (note === knobNoteNow[index]) return;
+    // A knob resting on the edge between two notes must not trill.
+    if (knobValueAtNote[index] !== null && Math.abs(value - knobValueAtNote[index]) < KNOB_SLACK) return;
+    if (t - knobTime[index] < KNOB_GAP) return;
+    knobNoteNow[index] = note;
+    knobValueAtNote[index] = value;
+    knobTime[index] = t;
+    pluck(KNOB_VOICES[index], note);
+  }
+
+  // ---- the one way in ----
+
+  function handle(bytes) {
+    if (!ready) return;
+    const a = route(bytes);
+    if (!a) return;
+    if (a.type === 'key') a.on ? keyOn(a.note, a.vel) : keyOff(a.note);
+    else if (a.type === 'pad') { if (!padHit(a.index)) return; }
+    else if (a.type === 'knob') knobTurn(a.index, a.value);
+    else if (a.type === 'bend') setBend(a.value);
+    for (const fn of listeners) fn(a);
+  }
+
+  function allOff() {
+    if (!ready) return;
+    for (const note of [...voices.keys()]) keyOff(note, 0.1);
+    setBend(0);
+    for (const fn of listeners) fn({ type: 'alloff' });
+  }
+
+  function setVolume(v) {
+    volume = Math.max(0, Math.min(1, v));
+    if (master) master.gain.setTargetAtTime(MASTER * volume, ctx.currentTime, 0.03);
+  }
+
+  return {
+    start, handle, allOff, setVolume, state,
+    on: fn => listeners.push(fn),
+    resume: () => ctx && ctx.resume(),
+  };
+})();
+</script>
+
 </body>
 </html>
