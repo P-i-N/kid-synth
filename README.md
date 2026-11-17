@@ -3,7 +3,7 @@
 A calm sound-and-picture toy for a toddler at an Akai MPK mini. One HTML file,
 no install, no network.
 
-- **Keys** play a soft electric piano. Each press lights its key and sends up one slow bloom of colour.
+- **Keys** play a warm, full synth voice that starts bright and mellows. Each press lights its key and sends up one slow bloom of colour.
 - **Pads** play eight animals: cow, sheep, cat, dog on the bottom row, duck, rooster, horse, frog on the top row. Both pad banks play the same animals.
 - **Knobs** are eight small melodic toys (music box, marimba, water drop, bell and so on). They play while turned and are silent when still.
 - **Joystick** left and right plays a harp, like a ninth knob that springs back. Up and down plays knob 1.

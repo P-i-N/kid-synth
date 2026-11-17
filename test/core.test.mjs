@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.match(/<script id="core">([\s\S]*?)<\/script>/)[1];
-const { route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel, noKeyboardNote, outputCurve } =
-  new Function(src + '; return {route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel, noKeyboardNote, outputCurve}')();
+const { route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel, noKeyboardNote, outputCurve, keyVoice } =
+  new Function(src + '; return {route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel, noKeyboardNote, outputCurve, keyVoice}')();
 
 test('key down and up', () => {
   assert.deepEqual(route([0x90, 60, 100]), { type: 'key', note: 60, on: true, vel: 100 });
@@ -237,4 +237,65 @@ test('louder in is never quieter out, with no jump anywhere', () => {
 test('the two halves of a wave are treated alike', () => {
   for (const x of [0.1, 0.45, 0.7, 1]) assert.equal(outputCurve(-x), -outputCurve(x));
   assert.equal(outputCurve(0), 0);
+});
+
+// ---- what a key sounds like ----
+
+// How strong each harmonic of a wave shape is, and what a low-pass filter leaves of a frequency.
+const HARMONIC = {
+  sine: n => (n === 1 ? 1 : 0),
+  triangle: n => (n % 2 ? 8 / (Math.PI ** 2 * n * n) : 0),
+  sawtooth: n => 2 / (Math.PI * n),
+  square: n => (n % 2 ? 4 / (Math.PI * n) : 0),
+};
+function passes(hz, cutoff, q) {
+  const r = hz / cutoff, Q = 10 ** (q / 20);
+  return 1 / Math.sqrt((1 - r * r) ** 2 + (r / Q) ** 2);
+}
+
+// The voice's partials with the filter at `cutoff`: how many are at least a twentieth
+// as strong as the strongest, and what share of the sound lies above 5 kHz.
+function spectrum(note, cutoff) {
+  const voice = keyVoice(note), f = 440 * 2 ** ((note - 69) / 12), power = new Map();
+  for (const o of voice.oscs) {
+    for (let n = 1; f * o.ratio * n < 20000; n++) {
+      const hz = Math.round(f * o.ratio * n);
+      const a = o.level * HARMONIC[o.type](n) * passes(hz, cutoff, voice.filter.q);
+      power.set(hz, (power.get(hz) || 0) + a * a);
+    }
+  }
+  const all = [...power.values()], top = Math.max(...all), total = all.reduce((x, y) => x + y, 0);
+  const high = [...power].filter(([hz]) => hz > 5000).reduce((x, [, pw]) => x + pw, 0);
+  return { heard: all.filter(pw => Math.sqrt(pw / top) >= 0.05).length, shrill: Math.sqrt(high / total) };
+}
+const KEYS = Array.from({ length: 25 }, (_, i) => 48 + i);
+
+test('a key sounds full, not like a bare tone: six partials or more on every key', () => {
+  for (const note of KEYS) {
+    const { start, rest } = keyVoice(note).filter;
+    assert.ok(spectrum(note, rest).heard >= 6, `key ${note} held: ${spectrum(note, rest).heard} partials`);
+    assert.ok(spectrum(note, start).heard >= spectrum(note, rest).heard, `key ${note} at its start`);
+  }
+});
+
+test('each note starts bright and settles warmer within about a second', () => {
+  for (const note of KEYS) {
+    const { start, rest, seconds } = keyVoice(note).filter;
+    assert.ok(start >= rest * 1.3, `key ${note}: ${start} then ${rest}`);
+    assert.ok(seconds >= 0.1 && seconds <= 0.5, `key ${note}: ${seconds}`);
+  }
+});
+
+test('two oscillators sit a little apart in pitch, so a held note moves', () => {
+  const cents = keyVoice(60).oscs.filter(o => o.ratio === 1 && o.type !== 'sine').map(o => o.cents);
+  const apart = Math.max(...cents) - Math.min(...cents);
+  assert.ok(apart >= 6 && apart <= 20, `${apart} cents apart`);
+});
+
+test('nothing shrill: little of any note lies above 5 kHz', () => {
+  for (const note of KEYS) {
+    const { start, rest } = keyVoice(note).filter;
+    assert.ok(spectrum(note, start).shrill <= 0.12, `key ${note} at its start: ${spectrum(note, start).shrill}`);
+    assert.ok(spectrum(note, rest).shrill <= 0.05, `key ${note} held: ${spectrum(note, rest).shrill}`);
+  }
 });

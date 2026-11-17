@@ -191,6 +191,25 @@ function outputCurve(x) {
   return Math.sign(y) * (OUT_KNEE + room * Math.tanh((size - OUT_KNEE) / room));
 }
 
+// What a key sounds like: the oscillators (pitch as a ratio of the note, cents off
+// tune, level) and the low-pass filter they share (cutoff in Hz at the start of the
+// note, where it settles and how fast, resonance in dB).
+// Two sawtooth waves a little apart in pitch carry the overtones, a triangle the body.
+// The filter follows the key, so low and high notes are equally full, opens for the
+// start of each note and closes to a warmer tone. Its upper limits keep high notes soft.
+function keyVoice(note) {
+  const f = 440 * 2 ** ((note - 69) / 12);
+  const within = (x, low, high) => Math.min(high, Math.max(low, x));
+  return {
+    oscs: [
+      { type: 'sawtooth', ratio: 1, cents: -7, level: 0.41 },
+      { type: 'sawtooth', ratio: 1, cents: 7, level: 0.41 },
+      { type: 'triangle', ratio: 1, cents: 0, level: 0.3 },
+    ],
+    filter: { start: within(f * 9, 2000, 4000), rest: within(f * 5, 1100, 3000), seconds: 0.35, q: 3 },
+  };
+}
+
 // A knob's travel is 12 steps up a five-note scale, so it always fits the keys.
 const KNOB_SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26];
 function knobNote(index, value) {
@@ -353,7 +372,7 @@ window.kid = (() => {
     ready = true;
   }
 
-  // ---- keys: a soft electric-piano voice ----
+  // ---- keys: a warm synth voice, built from keyVoice() ----
 
   function keyOn(note, vel) {
     if (voices.has(note)) keyOff(note, 0.03);
@@ -365,11 +384,14 @@ window.kid = (() => {
     env.gain.setTargetAtTime(peak, t, 0.003);              // about 8 ms attack
     env.gain.setTargetAtTime(peak * 0.35, t + 0.012, 0.4); // settles over about 1.2 s
     env.gain.setTargetAtTime(0, t + KEY_FADE_AT, 2.5);     // then dies away: nothing drones
+    const recipe = keyVoice(note);
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass';
-    tone.frequency.value = 2200;
+    tone.Q.value = recipe.filter.q;
+    tone.frequency.setValueAtTime(recipe.filter.start, t);
+    tone.frequency.setTargetAtTime(recipe.filter.rest, t, recipe.filter.seconds);
     tone.connect(env).connect(sum);
-    const oscs = [['triangle', 1, -4, 0.5], ['triangle', 1, 4, 0.5], ['sine', 2, 0, 0.22]].map(([type, ratio, cents, level]) => {
+    const oscs = recipe.oscs.map(({ type, ratio, cents, level }) => {
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = type;
       o.frequency.value = f * ratio;

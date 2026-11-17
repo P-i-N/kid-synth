@@ -73,7 +73,7 @@ Laid out like the keyboard itself, so a hand and its picture line up.
 
 ### Sound
 
-- **Keys:** a synthesized soft electric-piano voice, at most eight notes at once. Hit strength changes loudness only a little.
+- **Keys:** a synthesized warm synth voice (two detuned sawtooth waves and a triangle through a low-pass filter that opens at the start of each note; changed 2026-11-17 from a soft electric piano, which sounded too plain), at most eight notes at once. Hit strength changes loudness only a little.
 - **Pads:** eight animals, the same on both pad banks. Planned set: cow, sheep, cat, dog, duck, rooster, horse, frog. Hitting a pad again restarts its clip; at most two animals sound together. Clips are trimmed to about two seconds and levelled.
 - **Knobs:** each knob is a small melodic toy. Turning it steps through a five-note scale, so anything it plays sounds fine with the keys. Each knob has its own gentle voice (music box, marimba, water drop, kalimba, soft bell and similar). Silent when still.
 - **Joystick:** left/right is a ninth melodic toy (a harp) that springs back to its middle. Up/down acts as knob 1. (Changed 2026-11-14: it first bent held notes, which was inaudible unless a key was down.)
