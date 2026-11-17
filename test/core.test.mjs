@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.match(/<script id="core">([\s\S]*?)<\/script>/)[1];
-const { route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel } =
-  new Function(src + '; return {route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel}')();
+const { route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel, noKeyboardNote, outputCurve } =
+  new Function(src + '; return {route, velGain, knobNote, ANIMALS, isBlack, keyX, stickValue, octaveShift, fromPadChannel, noKeyboardNote, outputCurve}')();
 
 test('key down and up', () => {
   assert.deepEqual(route([0x90, 60, 100]), { type: 'key', note: 60, on: true, vel: 100 });
@@ -193,4 +193,48 @@ test('toddler-program pads in controller mode play animals on press only', () =>
 test('toddler-program pads in program-change mode play animals', () => {
   assert.deepEqual(route([0xC9, 24]), { type: 'pad', index: 0 });
   assert.deepEqual(route([0xC9, 39]), { type: 'pad', index: 7 });
+});
+
+// ---- when no keyboard can be reached, say why ----
+
+test('opened straight from disk, the page says how to open it properly', () => {
+  const note = noKeyboardNote('file:');
+  assert.match(note, /opened as a file/i);
+  assert.match(note, /play\.py/);
+  assert.match(note, /mouse/);
+});
+
+test('served pages get the plain sentence', () => {
+  for (const protocol of ['http:', 'https:']) {
+    assert.equal(noKeyboardNote(protocol), 'No keyboard found. You can still play with the mouse.');
+  }
+});
+
+// ---- how loud it gets ----
+
+// What came out for a given level until now: a soft ceiling at 0.7.
+const before = x => 0.7 * Math.tanh(x / 0.7);
+
+test('everything short of the limit comes out twice as loud as before', () => {
+  for (const x of [0.01, 0.05, 0.1, 0.2, 0.3, 0.4]) {
+    assert.ok(Math.abs(outputCurve(x) - 2 * before(x)) < 1e-9, `level ${x}: ${outputCurve(x)}`);
+  }
+});
+
+test('the loudest input stays just under full scale, and uses the room there is', () => {
+  for (let x = -1; x <= 1; x += 0.001) assert.ok(Math.abs(outputCurve(x)) <= 0.98, `level ${x}`);
+  assert.ok(outputCurve(1) > 0.95);
+});
+
+test('louder in is never quieter out, with no jump anywhere', () => {
+  const step = 0.0005;
+  for (let x = -1; x < 1; x += step) {
+    const rise = outputCurve(x + step) - outputCurve(x);
+    assert.ok(rise > 0 && rise <= 2 * step * 1.001, `level ${x}: rise ${rise}`);
+  }
+});
+
+test('the two halves of a wave are treated alike', () => {
+  for (const x of [0.1, 0.45, 0.7, 1]) assert.equal(outputCurve(-x), -outputCurve(x));
+  assert.equal(outputCurve(0), 0);
 });

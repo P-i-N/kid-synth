@@ -104,7 +104,7 @@
     <div id="pads" class="grid"></div>
   </div>
   <div id="knobs" class="grid"></div>
-  <p id="note" hidden>No keyboard found. You can still play with the mouse.</p>
+  <p id="note" hidden></p>
 </div>
 <div id="keys"></div>
 
@@ -181,6 +181,16 @@ function velGain(vel) {
   return 0.55 * (1 - t) + 0.8 * t;
 }
 
+// The last thing every sound passes through: level in, level out, both -1 to 1.
+// Twice the first version's output (which was 0.7 * tanh(x / 0.7)), then bent over
+// smoothly from OUT_KNEE on, so that whatever goes in, nothing above OUT_TOP comes out.
+const OUT_KNEE = 0.8, OUT_TOP = 0.98;
+function outputCurve(x) {
+  const y = 1.4 * Math.tanh(x / 0.7), size = Math.abs(y), room = OUT_TOP - OUT_KNEE;
+  if (size <= OUT_KNEE) return y;
+  return Math.sign(y) * (OUT_KNEE + room * Math.tanh((size - OUT_KNEE) / room));
+}
+
 // A knob's travel is 12 steps up a five-note scale, so it always fits the keys.
 const KNOB_SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26];
 function knobNote(index, value) {
@@ -191,6 +201,15 @@ function knobNote(index, value) {
 // The joystick pushed left or right reads like a knob that rests at its middle.
 function stickValue(bend) {
   return Math.round((Math.min(1, Math.max(-1, bend)) + 1) / 2 * 127);
+}
+
+// What to tell the parent when no keyboard can be reached. Browsers give no MIDI
+// to a page opened as a file, and "no keyboard found" would send them looking at cables.
+function noKeyboardNote(protocol) {
+  if (protocol === 'file:') {
+    return 'Opened as a file, this page cannot reach the keyboard. Run play.py from this folder instead. You can still play with the mouse.';
+  }
+  return 'No keyboard found. You can still play with the mouse.';
 }
 
 // The on-screen keyboard: the MPK mini's 25 keys at their default octave.
@@ -248,7 +267,6 @@ window.kid = (() => {
   const KNOB_SLACK = 3;        // a knob must move this far before it plays again
   const STICK = 8;             // the joystick sideways is a ninth knob voice
   const MASTER = 0.7;
-  const CEILING = 0.7;         // the output never exceeds this (about -3 dBFS)
 
   // One short plucked voice per knob. partials: [frequency ratio, level, decay scale].
   // sweep: [start ratio, end ratio, seconds] bends the pitch, for drops and bubbles.
@@ -296,12 +314,11 @@ window.kid = (() => {
     comp.attack.value = 0.003;
     comp.release.value = 0.15;
     // A soft clip after the compressor is the hard guarantee on loudness:
-    // whatever goes in, nothing above CEILING comes out.
+    // whatever goes in, nothing above OUT_TOP comes out.
     const shaper = ctx.createWaveShaper();
     const curve = new Float32Array(2049);
     for (let i = 0; i < curve.length; i++) {
-      const x = i / (curve.length - 1) * 2 - 1;
-      curve[i] = CEILING * Math.tanh(x / CEILING);
+      curve[i] = outputCurve(i / (curve.length - 1) * 2 - 1);
     }
     shaper.curve = curve;
     sum.connect(master).connect(comp).connect(shaper).connect(ctx.destination);
@@ -729,6 +746,8 @@ window.kid = (() => {
     }
     frame = blooms.length ? requestAnimationFrame(draw) : 0;   // nothing alive: nothing runs
   }
+
+  $('note').textContent = noKeyboardNote(location.protocol);
 
   // ---- actions → pictures ----
   kid.on(a => {

@@ -16,16 +16,20 @@ Nothing on screen moves unless the child does something.
 Open <https://p-i-n.github.io/kid-synth/>, click the play button once, and allow
 MIDI when the browser asks.
 
-Or serve it yourself. Browsers only give MIDI access to a served page, not to a
-file opened from disk:
+Or run it from this folder:
 
 ```bash
-python3 -m http.server 8377
+python3 play.py
 ```
 
-Then open <http://localhost:8377>, click the play button once, and allow MIDI
-when the browser asks (Firefox asks once per site). The small slider in the
+That serves the folder to this machine only and opens <http://localhost:8377>
+in the browser; Ctrl+C stops it. Click the play button once and allow MIDI when
+the browser asks (Firefox asks once per address). The small slider in the
 top-right corner is the volume; the button next to it is full screen.
+
+Opening `index.html` itself (double-clicking it) shows the toy and it plays with
+the mouse, but it cannot reach the keyboard: browsers give no MIDI to a page
+opened as a file. Firefox does not offer Web MIDI there at all.
 
 Without a keyboard, the on-screen keys, pads and knobs work with the mouse or a
 finger. Drag a knob up or down to turn it.
